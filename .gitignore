@@ -3,6 +3,18 @@ HELP.md
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+### Log ###
+*.log
+/logs/
+
+### Cahce ###
+tmp/
+*.tmp
+*.swp
+
+### macOS ###
+.DS_Store
+
 ### STS ###
 .apt_generated
 .classpath

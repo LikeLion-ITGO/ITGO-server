@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: itgo-mysql
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../mysql_config:/etc/mysql/conf.d  # 설정 파일 마운트
+    networks:
+      - my-network
+
+  redis:
+    image: redis:latest
+    container_name: itgo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - my-network
+
+  application:
+    image: hyukwon20/itgo_server:latest
+    container_name: itgo-application
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    networks:
+      - my-network
+
+  nginx:
+    image: nginx:latest
+    container_name: itgo-nginx
+    restart: always
+    ports:
+      - "80:80"  # HTTP 요청을 80번 포트에서 받음
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf  # 설정 파일 마운트
+    depends_on:
+      - application
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:

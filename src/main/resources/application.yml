@@ -1,0 +1,10 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE} # .env 확인 : main 브랜치에 올릴 때는 prod 설정 ✅
+
+jwt:
+  secret: ${JWT_SECRET_KEY}
+  access-token-validity-in-seconds: ${JWT_ACCESS_VALIDITY_IN_SECONDS}
+  refresh-token-validity-in-seconds: ${JWT_REFRESH_VALIDITY_IN_SECONDS}

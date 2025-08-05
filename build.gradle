@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.5.4'
+	id 'org.springframework.boot' version '3.3.5'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'org.asciidoctor.jvm.convert' version '3.3.2'
 }
@@ -14,22 +14,64 @@ java {
 	}
 }
 
-repositories {
-	mavenCentral()
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+configurations.configureEach {
+	exclude group: 'commons-logging', module: 'commons-logging'
 }
 
 ext {
 	set('snippetsDir', file("build/generated-snippets"))
 }
 
+repositories {
+	mavenCentral()
+}
+
 dependencies {
+
+	// JPA
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+	// Database
 	runtimeOnly 'com.mysql:mysql-connector-j'
+
+	// Redis
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// Web
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+	// Tools
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// Validation
+	implementation 'org.springframework.boot:spring-boot-starter-validation:3.3.3'
+
+	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// SpringDoc - Swagger UI
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+
+	// S3
+	implementation 'com.amazonaws:aws-java-sdk-s3:1.12.671'
+
+	// Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// Jwt
+	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+	implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
+	implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
 }
 
 tasks.named('test') {

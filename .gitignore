@@ -44,3 +44,8 @@ out/
 
 ### Environment files ###
 .env
+
+### Querydsl generated sources ###
+/src/main/generated/
+/src/querydsl/
+

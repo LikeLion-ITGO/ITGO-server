@@ -9,6 +9,7 @@ import likelion.itgoserver.domain.store.entity.Store;
 import likelion.itgoserver.domain.store.repository.StoreRepository;
 import likelion.itgoserver.global.error.GlobalErrorCode;
 import likelion.itgoserver.global.error.exception.CustomException;
+import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ public class StoreService {
 
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
+    private final PublicUrlResolver publicUrlResolver;
 
     /**
      * 가게 정보 등록
@@ -34,7 +36,8 @@ public class StoreService {
         member.registerStore(store);
         storeRepository.save(store);
 
-        return StoreInfoResponse.of(store);
+        String imageUrl = publicUrlResolver.toUrl(store.getStoreImageKey());
+        return StoreInfoResponse.of(store, imageUrl);
     }
 
     /**
@@ -48,7 +51,9 @@ public class StoreService {
         if (store == null) {
             throw new CustomException(GlobalErrorCode.NOT_FOUND, "해당 회원은 등록된 가게가 없습니다.");
         }
-        return StoreInfoResponse.of(store);
+
+        String imageUrl = publicUrlResolver.toUrl(store.getStoreImageKey());
+        return StoreInfoResponse.of(store, imageUrl);
     }
 
     /**
@@ -66,7 +71,8 @@ public class StoreService {
 
         // Store 엔티티에서 직접 업데이트
         store.update(request);
-        return StoreInfoResponse.of(store);
+        String imageUrl = publicUrlResolver.toUrl(store.getStoreImageKey());
+        return StoreInfoResponse.of(store, imageUrl);
     }
 
     /**

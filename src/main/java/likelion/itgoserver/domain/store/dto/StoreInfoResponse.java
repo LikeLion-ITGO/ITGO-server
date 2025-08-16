@@ -3,6 +3,8 @@ package likelion.itgoserver.domain.store.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import likelion.itgoserver.domain.store.entity.Store;
 
+import java.time.LocalTime;
+
 @Schema(description = "가게 정보 응답")
 public record StoreInfoResponse(
         @Schema(description = "가게 아이디", example = "1")
@@ -14,20 +16,24 @@ public record StoreInfoResponse(
 
         AddressResponse address,
 
-        @Schema(description = "가게 운영 시간", example = "10:00 ~ 19:00")
-        String operatingTime,
+        @Schema(description = "영업 시작 시간", example = "09:00")
+        LocalTime openTime,
+        @Schema(description = "영업 종료 시간", example = "18:00")
+        LocalTime closeTime,
+
         @Schema(description = "가게 전화번호", example = "02-1234-5678")
         String phoneNumber,
         @Schema(description = "가게 소개", example = "철길 사거리 방면 CU 옆건물 2층입니다.")
         String description
 ) {
-    public static StoreInfoResponse of(Store store) {
+    public static StoreInfoResponse of(Store store, String imageUrl) {
         return new StoreInfoResponse(
                 store.getId(),
-                store.getStoreImageUrl(),
+                imageUrl,
                 store.getStoreName(),
                 AddressResponse.from(store.getAddress()),
-                store.getOperatingTime(),
+                store.getOpenTime(),
+                store.getCloseTime(),
                 store.getPhoneNumber(),
                 store.getDescription()
         );

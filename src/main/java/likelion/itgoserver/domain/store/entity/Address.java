@@ -2,6 +2,8 @@ package likelion.itgoserver.domain.store.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import lombok.*;
 
 @Embeddable
@@ -9,34 +11,27 @@ import lombok.*;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-
 public class Address {
 
     @Column(nullable = false)
-    private String zipCode;
+    private String roadAddress;
 
     @Column(nullable = false)
-    private String city;
+    private String dong; // 동네 정보 (ex. 공릉동, 하계동, 중계동)
 
     @Column(nullable = false)
-    private String district;
+    @DecimalMin(value = "-90.0") @DecimalMax(value = "90.0")
+    private Double latitude;
 
     @Column(nullable = false)
-   private String detail;
+    @DecimalMin(value = "-180.0") @DecimalMax(value = "180.0")
+    private Double longitude;
 
-    @Column(nullable = false)
-    private String dong;
-
-    public String toRoadAddress() {
-        return city + " " + district + " " + detail;
-    }
-
-    public void update(String zipCode, String city, String district, String detail, String dong) {
-        this.zipCode = zipCode;
-        this.city = city;
-        this.district = district;
-        this.detail = detail;
+    public void update(String roadAddress, String dong, Double latitude, Double longitude) {
+        this.roadAddress = roadAddress;
         this.dong = dong;
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
 
 }

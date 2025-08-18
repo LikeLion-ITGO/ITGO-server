@@ -1,10 +1,12 @@
 package likelion.itgoserver.domain.store.dto;
 
+import java.time.LocalTime;
+
 public interface StoreRequest {
-    String storeImageUrl();
     String storeName();
     AddressRequest address();
-    String operatingTime();
+    LocalTime openTime();
+    LocalTime closeTime();
     String phoneNumber();
     String description();
 }

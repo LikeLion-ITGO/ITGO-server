@@ -5,28 +5,25 @@ import likelion.itgoserver.domain.store.entity.Address;
 
 @Schema(description = "주소 응답")
 public record AddressResponse(
-        @Schema(description = "우편번호", example = "01842")
-        String zipCode,
+        @Schema(description = "도로명 주소", example = "서울 노원구 동일로192길 62 2층")
+        String roadAddress,
 
-        @Schema(description = "시/도", example = "서울")
-        String city,
+        @Schema(description = "법정동", example = "공릉동")
+        String dong,
 
-        @Schema(description = "시/군/구", example = "노원구")
-        String district,
+        @Schema(description = "위도", example = "37.6267705")
+        Double latitude,
 
-        @Schema(description = "상세 주소", example = "동일로192길 62 2층")
-        String detail,
-
-        @Schema(description = "행정동", example = "공릉동")
-        String dong
+        @Schema(description = "경도", example = "127.0763917")
+        Double longitude
 ) {
     public static AddressResponse from(Address address) {
         return new AddressResponse(
-                address.getZipCode(),
-                address.getCity(),
-                address.getDistrict(),
-                address.getDetail(),
-                address.getDong()
+                address.getRoadAddress(),
+                address.getDong(),
+                address.getLatitude(),
+                address.getLongitude()
         );
     }
+
 }

@@ -25,6 +25,7 @@ public class Member extends BaseTimeEntity {
     private String username;
 
     @Enumerated(value = EnumType.STRING)
+    @Column(name = "role", nullable = false)
     private Role role;
 
     /**
@@ -42,6 +43,7 @@ public class Member extends BaseTimeEntity {
             throw new CustomException(GlobalErrorCode.BAD_REQUEST, "해당 회원은 이미 가게를 등록했습니다.");
         }
         this.store = store;
+        store.assignOwner(this);
     }
 
     public void removeStore() {

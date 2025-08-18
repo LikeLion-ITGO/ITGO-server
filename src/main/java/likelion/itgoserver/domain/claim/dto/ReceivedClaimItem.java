@@ -8,14 +8,20 @@ import java.time.LocalDateTime;
 @Schema(description = "받은 요청 리스트 아이템")
 public record ReceivedClaimItem(
         Long claimId,
-        Long wishId,
-        StoreSummary store,     // wish.store 요약
-        String title,           // wish.title
-        String description,     // wish.description
-        LocalDateTime claimAt,  // claim.regDate
-        ClaimStatus status
+        Long tradeId,
+        ClaimStatus status,
+        LocalDateTime regDate,
+        WishSummary wish,
+        StoreSummary store
 ) {
-    @Schema(description = "가게 요약")
+    @Schema(description = "요청자가 보낸 Wish 요약")
+    public record WishSummary(
+            Long wishId,
+            String title,
+            String description
+    ) {}
+
+    @Schema(description = "요청자 가게 요약")
     public record StoreSummary(
             Long id,
             String name

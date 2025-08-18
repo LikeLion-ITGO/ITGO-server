@@ -13,7 +13,7 @@ public record ShareImageConfirmRequest(
         @Schema(example = "10") @NotNull Long shareId,
 
         @Schema(description = "확정할 이미지들(최대 5장)")
-        @NotEmpty @Size(max = 5)
+        @NotNull @Size(max = 5)
         List<@Valid ConfirmItem> items
 ) {
     @Schema(description = "확정 항목")
@@ -24,7 +24,7 @@ public record ShareImageConfirmRequest(
 
     @AssertTrue(message = "items의 seq는 0~4 범위 내에서 중복 없이 지정되어야 합니다.")
     public boolean isSeqsValid() {
-        if (items == null || items.isEmpty()) return false;
+        if (items == null) return false;
         Set<Integer> set = new HashSet<>();
         for (ConfirmItem it : items) {
             if (it == null || it.seq == null) return false;

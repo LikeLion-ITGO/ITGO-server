@@ -27,7 +27,7 @@ public class TradeController {
     private final TradeService tradeService;
     private final TradeListService tradeListService;
 
-    @Operation(summary = "거래 내역 : 나눔받은 내역 리스트")
+    @Operation(summary = "거래 내역 : 나눔한 내역 리스트")
     @GetMapping("/given/details")
     public ApiResponse<Page<TradeGivenItem>> listGiven(
             @CurrentMemberId Long memberId,
@@ -38,7 +38,7 @@ public class TradeController {
         return ApiResponse.success(tradeListService.listGiven(memberId, status, pageable));
     }
 
-    @Operation(summary = "거래내역 : 나눔한 내역 리스트")
+    @Operation(summary = "거래내역 : 나눔받은 내역 리스트")
     @GetMapping("/received/details")
     public ApiResponse<Page<TradeReceivedItem>> listReceived(
             @CurrentMemberId Long memberId,

@@ -3,10 +3,16 @@ package likelion.itgoserver.domain.share.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import likelion.itgoserver.domain.share.dto.ShareCardResponse;
 import likelion.itgoserver.domain.share.dto.ShareResponse;
 import likelion.itgoserver.domain.share.dto.ShareUpsertRequest;
 import likelion.itgoserver.domain.share.service.ShareService;
+import likelion.itgoserver.global.support.resolver.CurrentMemberId;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -29,8 +35,10 @@ public class ShareController {
             """
     )
     @PostMapping
-    public ResponseEntity<ShareResponse> create(@Valid @RequestBody ShareUpsertRequest request) {
-        ShareResponse response = shareService.create(request);
+    public ResponseEntity<ShareResponse> create(
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody ShareUpsertRequest request) {
+        ShareResponse response = shareService.create(memberId, request);
         // Location 헤더 설정 (REST 관례)
         URI location = URI.create("/api/shares/" + response.shareId());
         return ResponseEntity.created(location).body(response);
@@ -41,4 +49,15 @@ public class ShareController {
     public ResponseEntity<ShareResponse> get(@PathVariable Long shareId) {
         return ResponseEntity.ok(shareService.get(shareId));
     }
+
+    @Operation(summary = "사용자가 올린 Share 카드 리스트")
+    @GetMapping()
+    public ResponseEntity<Page<ShareCardResponse>> myShares(
+            @CurrentMemberId Long currentMemberId,
+            @ParameterObject
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ResponseEntity.ok(shareService.listMyShareCards(currentMemberId, pageable));
+    }
+
 }

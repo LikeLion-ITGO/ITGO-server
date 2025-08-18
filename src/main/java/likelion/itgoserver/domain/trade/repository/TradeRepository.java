@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface TradeRepository extends JpaRepository<Trade, Long> {
@@ -36,4 +37,12 @@ public interface TradeRepository extends JpaRepository<Trade, Long> {
 
     @EntityGraph(attributePaths = {"giverStore", "receiverStore", "share", "wish"})
     Page<Trade> findByReceiverStoreIdAndStatus(Long receiverStoreId, TradeStatus status, Pageable pageable);
+
+    interface TradeIdByClaim {
+        Long getClaimId();
+        Long getTradeId();
+    }
+
+    @Query("select t.claim.id as claimId, t.id as tradeId from Trade t where t.claim.id in :claimIds")
+    List<TradeIdByClaim> findTradeIdsByClaimIds(@Param("claimIds") List<Long> claimIds);
 }

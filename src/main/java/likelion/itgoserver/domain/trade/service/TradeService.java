@@ -92,6 +92,7 @@ public class TradeService {
                 .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "trade가 존재하지 않습니다. id=" + tradeId));
         if (t.getStatus() == TradeStatus.MATCHED) {
             t.complete();
+            t.getWish().close();
         }
         return get(tradeId);
     }

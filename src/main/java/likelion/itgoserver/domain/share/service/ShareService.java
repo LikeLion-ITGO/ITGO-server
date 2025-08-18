@@ -1,7 +1,11 @@
 package likelion.itgoserver.domain.share.service;
 
+import likelion.itgoserver.domain.claim.repository.ClaimRepository;
 import likelion.itgoserver.domain.image.dto.*;
+import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.image.service.ShareImageService;
+import likelion.itgoserver.domain.member.repository.MemberRepository;
+import likelion.itgoserver.domain.share.dto.ShareCardResponse;
 import likelion.itgoserver.domain.share.dto.ShareResponse;
 import likelion.itgoserver.domain.share.dto.ShareUpsertRequest;
 import likelion.itgoserver.domain.share.entity.Share;
@@ -14,12 +18,20 @@ import likelion.itgoserver.global.error.exception.CustomException;
 import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static org.springframework.data.domain.Sort.Order.desc;
 
 @Slf4j
 @Service
@@ -29,19 +41,20 @@ public class ShareService {
     private final ShareRepository shareRepository;
     private final StoreRepository storeRepository;
     private final PublicUrlResolver publicUrlResolver;
-    private final ShareImageService shareImageService;
+    private final ShareImageRepository shareImageRepository;
+    private final ClaimRepository claimRepository;
 
     /**
      * Share 등록 - 이미지는 비어있는 상태로 생성하고,
      * 이후에 /share-images/confirm 경로를 통해 이미지 확정.
      */
     @Transactional
-    public ShareResponse create(ShareUpsertRequest req) {
+    public ShareResponse create(Long memberId, ShareUpsertRequest req) {
         validateBusinessRules(req);
 
         // 참조 무결성: Store 존재 확인
-        Store store = storeRepository.findById(req.storeId())
-                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "store가 존재하지 않습니다. id=" + req.storeId()));
+        Store store = storeRepository.findByOwnerId(memberId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "회원의 가게가 없습니다."));
 
         // 엔티티 생성
         Share share = Share.builder()
@@ -74,6 +87,53 @@ public class ShareService {
         return toResponse(share);
     }
 
+    public Page<ShareCardResponse> listMyShareCards(Long memberId, Pageable pageable) {
+        Long storeId = storeRepository.findIdByOwnerId(memberId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "회원의 가게가 없습니다."));
+
+        // 정렬 강제 고정
+        Pageable fixed = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(desc("regDate"), desc("id")));
+
+        Page<Share> page = shareRepository.findByStoreId(storeId, fixed);
+        if (page.isEmpty()) return Page.empty(fixed);
+
+        // 이번 페이지 shareIds
+        List<Long> shareIds = page.getContent().stream().map(Share::getId).toList();
+
+        // 대표이미지 seq=0 조회 → shareId -> url
+        Map<Long, String> primaryUrlByShareId = shareImageRepository
+                .findByShareIdInAndSeq(shareIds, 0)
+                .stream()
+                .sorted(Comparator.comparingInt(ShareImage::getSeq))
+                .collect(Collectors.toMap(
+                        si -> si.getShare().getId(),
+                        si -> publicUrlResolver.toUrl(si.getObjectKey()),
+                        (a, b) -> a
+                ));
+
+        // 각 Share의 Claim 총 개수
+        Map<Long, Integer> countByShareId = claimRepository.countByShareIdInGroup(shareIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        ClaimRepository.ShareClaimCount::getShareId,
+                        r -> (int) r.getCnt()
+                ));
+
+        return page.map(s -> new ShareCardResponse(
+                s.getId(),
+                s.getItemName(),
+                s.getBrand(),
+                s.getQuantity(),
+                s.getExpirationDate(),
+                s.getOpenTime(),
+                s.getCloseTime(),
+                s.getRegDate(),
+                primaryUrlByShareId.getOrDefault(s.getId(), null),
+                countByShareId.getOrDefault(s.getId(), 0)
+        ));
+    }
+
     /**
      * 내부 유틸
      */
@@ -88,8 +148,8 @@ public class ShareService {
         }
     }
 
-    private ShareResponse toResponse(Share s) {
-        List<ShareImageResponse> images = s.getImages().stream()
+    private ShareResponse toResponse(Share share) {
+        List<ShareImageResponse> images = share.getImages().stream()
                 .sorted(Comparator.comparingInt(ShareImage::getSeq)) // 대표는 seq=0
                 .map(img -> new ShareImageResponse(
                         img.getSeq(),
@@ -99,17 +159,19 @@ public class ShareService {
                 .toList();
 
         return new ShareResponse(
-                s.getId(),
-                s.getItemName(),
-                s.getBrand(),
-                s.getQuantity(),
-                s.getDescription(),
-                s.getExpirationDate(),
-                s.getStorageType(),
-                s.getOpenTime(),
-                s.getCloseTime(),
+                share.getId(),
+                share.getItemName(),
+                share.getBrand(),
+                share.getQuantity(),
+                share.getDescription(),
+                share.getExpirationDate(),
+                share.getStorageType(),
+                share.getOpenTime(),
+                share.getCloseTime(),
                 images,
-                s.getStore().getAddress().getRoadAddress()
+                share.getStore().getAddress().getRoadAddress(),
+                share.getRegDate()
         );
     }
+
 }

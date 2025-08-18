@@ -20,9 +20,10 @@ import java.time.LocalDateTime;
                 @UniqueConstraint(name = "uk_wish_share", columnNames = {"wish_id","share_id"})
         },
         indexes = {
-                @Index(name = "idx_claim_wish", columnList = "wish_id"),
-                @Index(name = "idx_claim_share", columnList = "share_id"),
-                @Index(name = "idx_claim_status_regdate", columnList = "status,regDate")
+                // 무한스크롤 : 받은 요청
+                @Index(name = "idx_claim_share_regdate_id", columnList = "share_id, reg_date, id"),
+                // 무한스크롤 : 보낸 요청
+                @Index(name = "idx_claim_wish_regdate_id",  columnList = "wish_id,  reg_date, id"),
         }
 )
 public class Claim extends BaseTimeEntity {
@@ -51,10 +52,6 @@ public class Claim extends BaseTimeEntity {
     private ClaimStatus status;
 
     private LocalDateTime decidedAt;
-
-    // TODO : 매칭 후 새로운 인스턴스 생성할지 말지...?
-
-    // TODO : 매칭 후 거래 완료 처리..?
 
     public void accept() {
         if (status != ClaimStatus.PENDING) return;

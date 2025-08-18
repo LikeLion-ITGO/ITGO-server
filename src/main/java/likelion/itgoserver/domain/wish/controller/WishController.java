@@ -3,11 +3,18 @@ package likelion.itgoserver.domain.wish.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import likelion.itgoserver.domain.wish.dto.WishCardResponse;
 import likelion.itgoserver.domain.wish.dto.WishCreateAndMatchResponse;
 import likelion.itgoserver.domain.wish.dto.WishUpsertRequest;
 import likelion.itgoserver.domain.wish.service.WishService;
+import likelion.itgoserver.global.response.ApiResponse;
+import likelion.itgoserver.global.support.resolver.CurrentMemberId;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -34,12 +41,24 @@ public class WishController {
             """
     )
     @PostMapping("/match")
-    public ResponseEntity<WishCreateAndMatchResponse> createAndMatch(
+    public ApiResponse<WishCreateAndMatchResponse> createAndMatch(
+            @CurrentMemberId Long memberId,
             @Valid @RequestBody WishUpsertRequest request,
             @RequestParam(defaultValue = "3") double radiusKm,     // 선택: 근처 반경(없으면 동 기준만)
             @RequestParam(defaultValue = "10") int size            // 한 번에 보여줄 개수
     ) {
-        var resp = wishService.createAndMatch(request, radiusKm, PageRequest.of(0, size));
-        return ResponseEntity.ok(resp);
+        var resp = wishService.createAndMatch(memberId, request, radiusKm, PageRequest.of(0, size));
+        return ApiResponse.success(resp, "나눔 요청 등록 완료");
     }
+
+    @Operation(summary = "사용자가 올린 Wish 카드 리스트")
+    @GetMapping()
+    public ApiResponse<Page<WishCardResponse>> myShares(
+            @CurrentMemberId Long memberId,
+            @ParameterObject
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ApiResponse.success(wishService.listMyWishCards(memberId, pageable), "사용자가 등록한 요청 조회 완료");
+    }
+
 }

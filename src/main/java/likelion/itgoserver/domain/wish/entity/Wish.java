@@ -16,8 +16,8 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(indexes = {
-        @Index(name = "idx_wish_store_active", columnList = "store_id,isActive"),
-        @Index(name = "idx_wish_regdate", columnList = "regDate")
+        @Index(name = "idx_wish_store_active_regdate_id", columnList = "store_id, is_active, reg_date, id"),
+        @Index(name = "idx_wish_regdate", columnList = "reg_date")
 })
 public class Wish extends BaseTimeEntity {
 

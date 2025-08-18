@@ -55,10 +55,6 @@ public class Share extends BaseTimeEntity {
         this.images.add(image);
     }
 
-    public void removeImage(ShareImage image) {
-        this.images.remove(image);
-    }
-
     public boolean isAvailable() {
         return this.quantity > 0;
     }

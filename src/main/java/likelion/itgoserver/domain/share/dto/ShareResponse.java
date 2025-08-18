@@ -5,6 +5,7 @@ import likelion.itgoserver.domain.image.dto.ShareImageResponse;
 import likelion.itgoserver.domain.share.entity.StorageType;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -21,6 +22,7 @@ public record ShareResponse(
         LocalTime closeTime,
         @Schema(description = "이미지 목록(확정 후)", implementation = ShareImageResponse.class)
         List<ShareImageResponse> images,
-        String roadAddress
+        String roadAddress,
+        LocalDateTime regDate
 ) {
 }

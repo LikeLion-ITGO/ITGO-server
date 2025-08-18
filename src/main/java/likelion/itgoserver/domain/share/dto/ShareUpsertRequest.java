@@ -12,9 +12,6 @@ import java.time.LocalTime;
 
 @Schema(description = "공유 글(Share) 생성/수정 요청")
 public record ShareUpsertRequest(
-        @Schema(description = "가게 ID", example = "1")
-        @NotNull Long storeId,
-
         @Schema(description = "상품명", example = "초코파이")
         @NotBlank String itemName,
 

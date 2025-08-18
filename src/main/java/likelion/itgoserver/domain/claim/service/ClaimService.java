@@ -2,6 +2,8 @@ package likelion.itgoserver.domain.claim.service;
 
 import likelion.itgoserver.domain.claim.dto.ClaimResponse;
 import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem;
+import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem.StoreSummary;
+import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem.WishSummary;
 import likelion.itgoserver.domain.claim.dto.SentClaimItem;
 import likelion.itgoserver.domain.claim.entity.ClaimStatus;
 import likelion.itgoserver.domain.image.repository.ShareImageRepository;
@@ -10,6 +12,7 @@ import likelion.itgoserver.domain.claim.entity.Claim;
 import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
 import likelion.itgoserver.domain.claim.repository.ClaimRepository;
+import likelion.itgoserver.domain.trade.repository.TradeRepository;
 import likelion.itgoserver.domain.trade.service.TradeService;
 import likelion.itgoserver.domain.wish.entity.Wish;
 import likelion.itgoserver.domain.wish.repository.WishRepository;
@@ -19,14 +22,16 @@ import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import static likelion.itgoserver.domain.trade.repository.TradeRepository.*;
 
 @Slf4j
 @Service
@@ -39,6 +44,7 @@ public class ClaimService {
     private final WishRepository wishRepository;
     private final PublicUrlResolver publicUrlResolver;
     private final TradeService tradeService;
+    private final TradeRepository tradeRepository;
 
     /**
      * 요청 생성(PENDING)
@@ -83,10 +89,15 @@ public class ClaimService {
         Share share = shareRepository.findByIdForUpdate(claim.getShare().getId())
                 .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + claim.getShare().getId()));
 
+        // 재고 부족이면 자동 거절
+        if (share.getQuantity() < claim.getQuantity()) {
+            claim.reject(); // decidedAt 세팅됨
+            log.info("재고 부족으로 자동 거절: claimId={}, shareId={}", claimId, share.getId());
+            return ClaimResponse.from(claim);
+        }
+
         // 수량 차감
         share.decreaseQuantity(claim.getQuantity());
-
-        // 상태 갱신
         claim.accept();
 
         // 3) 거래 생성
@@ -129,53 +140,84 @@ public class ClaimService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ReceivedClaimItem> receivedByShare(Long shareId, Pageable pageable) {
-        Page<Claim> page = claimRepository.findByShareId(shareId, pageable);
-        return page.map(c -> {
+    public Slice<ReceivedClaimItem> receivedByShare(Long shareId, Pageable pageable) {
+        // 정렬
+        Pageable fixed = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("regDate"), Sort.Order.desc("id"))
+        );
+
+        // 요청 조회
+        Slice<Claim> slice = claimRepository.findByShareId(shareId, fixed);
+        if (slice.isEmpty()) {
+            return new SliceImpl<>(List.of(), fixed, slice.hasNext());
+        }
+
+        // tradeId 매핑
+        List<Long> claimIds = slice.getContent().stream().map(Claim::getId).toList();
+        Map<Long, Long> tradeIdByClaimId = tradeRepository.findTradeIdsByClaimIds(claimIds).stream()
+                .collect(Collectors.toMap(TradeIdByClaim::getClaimId, TradeIdByClaim::getTradeId));
+
+        // DTO 매핑
+        return slice.map(c -> {
             var w = c.getWish();
             var st = w.getStore();
+            Long tradeId = tradeIdByClaimId.get(c.getId()); // ACCEPTED면 존재, 아니면 null
             return new ReceivedClaimItem(
                     c.getId(),
-                    w.getId(),
-                    new ReceivedClaimItem.StoreSummary(st.getId(), st.getStoreName()),
-                    w.getTitle(),
-                    w.getDescription(),
+                    tradeId,
+                    c.getStatus(),
                     c.getRegDate(),
-                    c.getStatus()
+                    new WishSummary(w.getId(), w.getTitle(), w.getDescription()),
+                    new StoreSummary(st.getId(), st.getStoreName())
             );
         });
     }
 
     @Transactional(readOnly = true)
-    public Page<SentClaimItem> sentByWish(Long wishId, Pageable pageable) {
-        Page<Claim> page = claimRepository.findByWishId(wishId, pageable);
+    public Slice<SentClaimItem> sentByWish(Long wishId, Pageable pageable) {
+        // 정렬
+        Pageable fixed = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("regDate"), Sort.Order.desc("id")));
 
-        // 1) 필요한 shareIds 수집
-        var shareIds = page.getContent().stream()
-                .map(c -> c.getShare().getId())
-                .distinct()
-                .toList();
+        // 요청 조회
+        Slice<Claim> slice = claimRepository.findByWishId(wishId, fixed);
+        if (slice.isEmpty()) {
+            return new SliceImpl<>(List.of(), fixed, slice.hasNext());
+        }
 
-        // 2) 대표 이미지(seq=0) 배치 조회 → Map<shareId, objectKey>
-        Map<Long, String> primaryKeyByShareId = shareImageRepository
+        // 필요한 shareIds 수집
+        List<Claim> claims = slice.getContent();
+        List<Long> shareIds = claims.stream().map(c -> c.getShare().getId()).distinct().toList();
+        List<Long> claimIds = claims.stream().map(Claim::getId).toList();
+
+        // 대표 이미지 seq=0 → url 매핑
+        Map<Long, String> primaryUrlByShareId = shareImageRepository
                 .findByShareIdInAndSeq(shareIds, 0)
                 .stream()
                 .sorted(Comparator.comparingInt(ShareImage::getSeq))
                 .collect(Collectors.toMap(
                         si -> si.getShare().getId(),
-                        ShareImage::getObjectKey,
-                        (a, b) -> a // 혹시 중복 시 첫번째 유지
+                        si -> publicUrlResolver.toUrl(si.getObjectKey()),
+                        (a, b) -> a
+                ));
+
+        // tradeId 배치 조회
+        Map<Long, Long> tradeIdByClaimId = tradeRepository.findTradeIdsByClaimIds(claimIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        TradeIdByClaim::getClaimId,
+                        TradeIdByClaim::getTradeId
                 ));
 
         // 3) 매핑
-        return page.map(c -> {
-            var s = c.getShare();
+        return slice.map(c -> {
+            var share = c.getShare();
             var wishStore = c.getWish().getStore();
-            var shareStore = s.getStore();
-
-            String primaryUrl = null;
-            String key = primaryKeyByShareId.get(s.getId());
-            if (key != null) primaryUrl = publicUrlResolver.toUrl(key);
+            var shareStore = share.getStore();
 
             Double distanceKm = round1(distanceKm(
                     wishStore.getAddress().getLatitude(),
@@ -184,19 +226,24 @@ public class ClaimService {
                     shareStore.getAddress().getLongitude()
             ));
 
+            Long tradeId = tradeIdByClaimId.get(c.getId());
+            String primaryImageUrl = primaryUrlByShareId.get(share.getId());
             return new SentClaimItem(
                     c.getId(),
-                    s.getId(),
-                    primaryUrl,
-                    s.getBrand(),
-                    s.getItemName(),
-                    s.getQuantity(),
-                    s.getOpenTime(),
-                    s.getCloseTime(),
-                    s.getExpirationDate(),
-                    distanceKm,
+                    tradeId,
+                    c.getStatus(),
                     c.getRegDate(),
-                    c.getStatus()
+                    new SentClaimItem.ShareSummary(
+                            share.getId(),
+                            primaryImageUrl,
+                            share.getBrand(),
+                            share.getItemName(),
+                            share.getQuantity(),
+                            share.getOpenTime(),
+                            share.getCloseTime(),
+                            share.getExpirationDate()
+                    ),
+                    distanceKm
             );
         });
     }

@@ -7,7 +7,6 @@ import java.time.LocalTime;
 
 @Schema(description = "필요 재고 요청 및 매칭 신청 DTO")
 public record WishUpsertRequest(
-        @NotNull Long storeId,
         @NotBlank @Size(max = 100) String title,
         @NotBlank @Size(max = 100) String itemName,
         @Size(max = 100) String brand,

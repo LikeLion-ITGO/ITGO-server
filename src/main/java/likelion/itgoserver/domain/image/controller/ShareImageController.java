@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Share-Image API", description = "Share 이미지 업로드 확정(커밋)")
+@Tag(name = "Share-Image API", description = "Share 이미지 업로드((Presigned URL))")
 @RestController
 @RequestMapping("/api/v1/share-image")
 @RequiredArgsConstructor

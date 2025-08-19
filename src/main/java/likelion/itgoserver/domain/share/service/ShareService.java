@@ -65,6 +65,7 @@ public class ShareService {
                 .description(req.description())
                 .expirationDate(req.expirationDate())
                 .storageType(req.storageType())
+                .freshCertified(req.freshCertified())
                 .openTime(req.openTime())
                 .closeTime(req.closeTime())
                 .build();
@@ -126,6 +127,7 @@ public class ShareService {
                 s.getBrand(),
                 s.getQuantity(),
                 s.getExpirationDate(),
+                s.isFreshCertified(),
                 s.getOpenTime(),
                 s.getCloseTime(),
                 s.getRegDate(),
@@ -166,6 +168,7 @@ public class ShareService {
                 share.getDescription(),
                 share.getExpirationDate(),
                 share.getStorageType(),
+                share.isFreshCertified(),
                 share.getOpenTime(),
                 share.getCloseTime(),
                 images,

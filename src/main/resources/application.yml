@@ -24,3 +24,6 @@ cloud:
 app:
   cdn:
     base-url: ${APP_CDN_BASE_URL:}
+
+server:
+  forward-headers-strategy: framework

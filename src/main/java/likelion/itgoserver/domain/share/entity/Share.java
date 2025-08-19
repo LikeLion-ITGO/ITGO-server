@@ -41,6 +41,9 @@ public class Share extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     private StorageType storageType;
 
+    @Column(name = "fresh_certified", nullable = false)
+    private boolean freshCertified;
+
     @Column(name = "open_time", nullable = false)
     private LocalTime openTime;
     @Column(name = "close_time", nullable = false)
@@ -64,5 +67,9 @@ public class Share extends BaseTimeEntity {
             throw new CustomException(GlobalErrorCode.BAD_REQUEST, "재고가 요청 수량보다 부족합니다.");
         }
         this.quantity -= amount;
+    }
+
+    public void certifyFresh() {
+        this.freshCertified = true;
     }
 }

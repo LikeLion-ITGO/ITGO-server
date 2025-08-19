@@ -13,6 +13,7 @@ public record ShareCardResponse(
         String brand,
         Integer quantity,
         LocalDate expirationDate,
+        Boolean freshCertified,
         LocalTime openTime,
         LocalTime closeTime,
         LocalDateTime regDate,

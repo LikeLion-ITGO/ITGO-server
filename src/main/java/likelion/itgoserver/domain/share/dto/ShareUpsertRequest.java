@@ -30,6 +30,9 @@ public record ShareUpsertRequest(
         @Schema(description = "보관 유형", example = "REFRIGERATED")
         @NotNull StorageType storageType,
 
+        @Schema(description = "신선식품 인증 여부", example = "false")
+        Boolean freshCertified,
+
         @Schema(description = "오픈 시각", example = "09:00")
         @NotNull LocalTime openTime,
 

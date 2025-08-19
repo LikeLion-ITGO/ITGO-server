@@ -18,6 +18,7 @@ public record ShareResponse(
         String description,
         LocalDate expirationDate,
         StorageType storageType,
+        Boolean freshCertified,
         LocalTime openTime,
         LocalTime closeTime,
         @Schema(description = "이미지 목록(확정 후)", implementation = ShareImageResponse.class)

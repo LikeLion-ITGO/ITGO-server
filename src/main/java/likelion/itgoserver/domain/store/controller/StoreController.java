@@ -35,6 +35,18 @@ public class StoreController {
     }
 
     @Operation(
+            summary = "가게 정보 조회",
+            description = "storeId 값으로 가게 정보를 조회"
+    )
+    @GetMapping("/{storeId}")
+    public ApiResponse<StoreInfoResponse> getStore(
+            @PathVariable Long storeId
+    ) {
+        StoreInfoResponse response = storeService.getStoreByMemberId(storeId);
+        return ApiResponse.success(response, "가게 조회 성공");
+    }
+
+    @Operation(
             summary = "내 가게 조회",
             description = "현재 로그인된 회원의 가게 정보를 조회\n\n" +
                     "`Authorization: Bearer {accessToken}`"
@@ -46,6 +58,8 @@ public class StoreController {
         StoreInfoResponse response = storeService.getStoreByMemberId(memberId);
         return ApiResponse.success(response, "가게 조회 성공");
     }
+
+
 
     @Operation(
             summary = "가게 정보 수정",

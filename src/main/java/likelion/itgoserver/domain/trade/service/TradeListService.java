@@ -9,6 +9,7 @@ import likelion.itgoserver.domain.trade.entity.TradeStatus;
 import likelion.itgoserver.domain.trade.repository.TradeRepository;
 import likelion.itgoserver.global.error.GlobalErrorCode;
 import likelion.itgoserver.global.error.exception.CustomException;
+import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +22,7 @@ public class TradeListService {
 
     private final StoreRepository storeRepository;
     private final TradeRepository tradeRepository;
+    private final PublicUrlResolver publicUrlResolver;
 
     /** 나눔한 내역 조회 */
     @Transactional(readOnly = true)
@@ -38,10 +40,16 @@ public class TradeListService {
             var giver = t.getGiverStore();
             var receiver = t.getReceiverStore();
             Double distance = round1(distanceKm(giver, receiver));
+            String imageKey = t.getPrimaryImageKey();
 
             return new TradeGivenItem(
                     t.getId(),
                     t.getStatus().name(),
+                    t.getCompletedAt(),
+                    t.getCanceledAt(),
+                    t.getRegDate(),
+
+                    publicUrlResolver.toUrl(imageKey),
                     share.getBrand(),
                     share.getItemName(),
                     share.getOpenTime(),
@@ -49,6 +57,10 @@ public class TradeListService {
                     share.getExpirationDate(),
                     wish.getQuantity(),
                     distance,
+
+                    receiver.getId(),
+                    publicUrlResolver.toUrl(receiver.getStoreImageKey()),
+                    receiver.getStoreName(),
                     receiver.getAddress().getRoadAddress(),
                     receiver.getOpenTime(),
                     receiver.getCloseTime(),
@@ -73,10 +85,16 @@ public class TradeListService {
             var giver = t.getGiverStore();
             var receiver = t.getReceiverStore();
             Double distance = round1(distanceKm(giver, receiver));
+            String imageKey = t.getPrimaryImageKey();
 
             return new TradeReceivedItem(
                     t.getId(),
                     t.getStatus().name(),
+                    t.getCompletedAt(),
+                    t.getCanceledAt(),
+                    t.getRegDate(),
+
+                    publicUrlResolver.toUrl(imageKey),
                     share.getBrand(),
                     share.getItemName(),
                     share.getOpenTime(),
@@ -84,6 +102,10 @@ public class TradeListService {
                     share.getExpirationDate(),
                     wish.getQuantity(),
                     distance,
+
+                    giver.getId(),
+                    publicUrlResolver.toUrl(giver.getStoreImageKey()),
+                    giver.getStoreName(),
                     giver.getAddress().getRoadAddress(),
                     giver.getOpenTime(),
                     giver.getCloseTime(),

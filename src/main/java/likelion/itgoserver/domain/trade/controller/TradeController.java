@@ -64,6 +64,6 @@ public class TradeController {
     @Operation(summary = "나눔 취소")
     @PostMapping("/cancel/{tradeId}")
     public ApiResponse<TradeDetailResponse> cancel(@PathVariable Long tradeId) {
-        return ApiResponse.success(tradeService.cancel(tradeId));
+        return ApiResponse.success(tradeService.cancel(tradeId), "거래 취소 완료.");
     }
 }

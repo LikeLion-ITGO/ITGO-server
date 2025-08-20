@@ -1,8 +1,11 @@
 package likelion.itgoserver.domain.trade.service;
 
 import likelion.itgoserver.domain.claim.entity.Claim;
+import likelion.itgoserver.domain.claim.entity.ClaimStatus;
+import likelion.itgoserver.domain.claim.repository.ClaimRepository;
 import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.share.entity.ShareImage;
+import likelion.itgoserver.domain.share.repository.ShareRepository;
 import likelion.itgoserver.domain.trade.dto.TradeDetailResponse;
 import likelion.itgoserver.domain.trade.entity.Trade;
 import likelion.itgoserver.domain.trade.entity.TradeStatus;
@@ -19,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class TradeService {
 
     private final TradeRepository tradeRepository;
+    private final ClaimRepository claimRepository;
+    private final ShareRepository shareRepository;
     private final ShareImageRepository shareImageRepository;
     private final PublicUrlResolver publicUrlResolver;
 
@@ -97,14 +102,34 @@ public class TradeService {
         return get(tradeId);
     }
 
-    /** 나눔 취소 (정책에 맞게 권한/사유 처리 추가 가능) */
+    /** 나눔 취소 */
     @Transactional
     public TradeDetailResponse cancel(Long tradeId) {
-        Trade t = tradeRepository.findByIdForUpdate(tradeId)
+        // Trade 잠금
+        Trade trade = tradeRepository.findByIdForUpdate(tradeId)
                 .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "trade가 존재하지 않습니다. id=" + tradeId));
-        if (t.getStatus() == TradeStatus.MATCHED) {
-            t.cancel();
+
+        if (trade.getStatus() == TradeStatus.COMPLETED) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미 나눔이 완료되어 취소할 수 없습니다.");
         }
+        if (trade.getStatus() == TradeStatus.CANCELED) {
+            return get(tradeId); // 멱등
+        }
+
+        // Claim 잠금
+        var claim = claimRepository.findByIdForUpdate(trade.getClaim().getId())
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "claim이 존재하지 않습니다. id=" + trade.getClaim().getId()));
+
+        // 재고 복구
+        if (claim.getStatus() != ClaimStatus.CANCELED) {
+            var share = shareRepository.findByIdForUpdate(trade.getShare().getId())
+                    .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + trade.getShare().getId()));
+            share.increaseQuantity(claim.getQuantity());
+            claim.cancel();
+        }
+
+        // 거래 취소
+        trade.cancel();
         return get(tradeId);
     }
 }

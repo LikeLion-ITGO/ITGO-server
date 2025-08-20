@@ -43,6 +43,17 @@ public class StoreService {
     /**
      * 가게 정보 조회
      */
+    public StoreInfoResponse getStore(Long storeId) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "해당 ID의 가게를 찾을 수 없습니다: " + storeId));
+
+        String imageUrl = publicUrlResolver.toUrl(store.getStoreImageKey());
+        return StoreInfoResponse.of(store, imageUrl);
+    }
+
+    /**
+     * 사용자 본인 가게 정보 조회
+     */
     public StoreInfoResponse getStoreByMemberId(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "해당 ID의 회원을 찾을 수 없습니다: " + memberId));

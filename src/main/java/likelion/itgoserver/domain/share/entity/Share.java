@@ -69,6 +69,11 @@ public class Share extends BaseTimeEntity {
         this.quantity -= amount;
     }
 
+    public void increaseQuantity(int amount) {
+        if (amount <= 0) return;
+        this.quantity += amount;
+    }
+
     public void certifyFresh() {
         this.freshCertified = true;
     }

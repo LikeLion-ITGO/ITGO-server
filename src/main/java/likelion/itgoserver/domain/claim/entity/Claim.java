@@ -66,9 +66,14 @@ public class Claim extends BaseTimeEntity {
     }
 
     public void cancel() {
-        if (status != ClaimStatus.PENDING) return;
-        status = ClaimStatus.CANCELED;
-        decidedAt = LocalDateTime.now();
+        // 이미 최종 상태면 멱등 처리
+        if (status == ClaimStatus.CANCELED || status == ClaimStatus.REJECTED) return;
+
+        // PENDING 또는 ACCEPTED → CANCELED 전환 허용
+        if (status == ClaimStatus.PENDING || status == ClaimStatus.ACCEPTED) {
+            status = ClaimStatus.CANCELED;
+            decidedAt = LocalDateTime.now();
+        }
     }
 
     public static Claim from(Wish wish, Share share) {

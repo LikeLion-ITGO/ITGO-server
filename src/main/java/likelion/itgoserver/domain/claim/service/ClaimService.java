@@ -132,10 +132,23 @@ public class ClaimService {
         Claim claim = claimRepository.findByIdForUpdate(claimId)
                 .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "claim이 존재하지 않습니다. id=" + claimId));
 
+        // 이미 끝난 상태는 멱등 처리
+        if (claim.getStatus() == ClaimStatus.CANCELED || claim.getStatus() == ClaimStatus.REJECTED) {
+            return ClaimResponse.from(claim);
+        }
+
+        // PENDING -> 단순 취소
         if (claim.getStatus() == ClaimStatus.PENDING) {
             claim.cancel();
-            log.info("Claim 취소: id={}", claimId);
+            log.info("Claim 취소(PENDING): id={}", claimId);
+            return ClaimResponse.from(claim);
         }
+
+        // ACCEPTED 상태는 Trade에서만 취소
+        if (claim.getStatus() == ClaimStatus.ACCEPTED) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "ACCEPTED Claim은 거래 내역(Trad)에서 취소 가능");
+        }
+
         return ClaimResponse.from(claim);
     }
 

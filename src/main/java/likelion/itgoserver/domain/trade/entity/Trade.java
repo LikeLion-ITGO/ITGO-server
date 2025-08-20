@@ -91,9 +91,8 @@ public class Trade extends BaseTimeEntity {
     }
 
     public void cancel() {
-        if (this.status == TradeStatus.MATCHED) {
-            this.status = TradeStatus.CANCELED;
-            this.canceledAt = LocalDateTime.now();
-        }
+        if (status == TradeStatus.COMPLETED) return;
+        this.status = TradeStatus.CANCELED;
+        this.canceledAt = LocalDateTime.now();
     }
 }

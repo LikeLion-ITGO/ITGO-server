@@ -4,7 +4,6 @@ import likelion.itgoserver.domain.claim.repository.ClaimRepository;
 import likelion.itgoserver.domain.image.dto.*;
 import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.image.service.ShareImageService;
-import likelion.itgoserver.domain.member.repository.MemberRepository;
 import likelion.itgoserver.domain.share.dto.ShareCardResponse;
 import likelion.itgoserver.domain.share.dto.ShareResponse;
 import likelion.itgoserver.domain.share.dto.ShareUpsertRequest;
@@ -160,8 +159,14 @@ public class ShareService {
                 ))
                 .toList();
 
+        Store store = share.getStore();
         return new ShareResponse(
                 share.getId(),
+
+                store.getId(),
+                publicUrlResolver.toUrl(store.getStoreImageKey()),
+                store.getStoreName(),
+
                 share.getItemName(),
                 share.getBrand(),
                 share.getQuantity(),

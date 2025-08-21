@@ -12,6 +12,11 @@ import java.util.List;
 @Schema(description = "공유 글(Share) 단건 응답")
 public record ShareResponse(
         @Schema(example = "10") Long shareId,
+
+        Long storeId,
+        String storeImageUrl,
+        String storeName,
+
         String itemName,
         String brand,
         Integer quantity,

@@ -42,7 +42,7 @@ public class StoreController {
     public ApiResponse<StoreInfoResponse> getStore(
             @PathVariable Long storeId
     ) {
-        StoreInfoResponse response = storeService.getStoreByMemberId(storeId);
+        StoreInfoResponse response = storeService.getStore(storeId);
         return ApiResponse.success(response, "가게 조회 성공");
     }
 

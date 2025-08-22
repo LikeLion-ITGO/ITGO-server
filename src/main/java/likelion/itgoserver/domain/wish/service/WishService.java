@@ -108,6 +108,39 @@ public class WishService {
         ));
     }
 
+    @Transactional(readOnly = true)
+    public Page<WishCardResponse> listMyActiveWishCards(Long memberId, Pageable pageable) {
+        Long storeId = storeRepository.findIdByOwnerId(memberId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "회원의 가게가 없습니다."));
+
+        // 정렬 강제 고정
+        Pageable fixed = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("regDate"), Sort.Order.desc("id")));
+
+        Page<Wish> page = wishRepository.findByStoreIdAndIsActiveTrue(storeId, fixed);
+        if (page.isEmpty()) return Page.empty(fixed);
+
+        List<Long> wishIds = page.getContent().stream().map(Wish::getId).toList();
+
+        Map<Long, Integer> countByWishId = claimRepository.countByWishIdInGroup(wishIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        ClaimRepository.WishClaimCount::getWishId,
+                        r -> (int) r.getCnt()
+                ));
+
+        return page.map(w -> new WishCardResponse(
+                w.getId(),
+                w.getTitle(),
+                w.getItemName(),
+                w.getBrand(),
+                w.getQuantity(),
+                w.getDescription(),
+                w.getRegDate(),
+                countByWishId.getOrDefault(w.getId(), 0)
+        ));
+    }
+
     private WishMatchItem toMatchItem(ShareWithDistance swd) {
         Share share = swd.share();
 

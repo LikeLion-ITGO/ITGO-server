@@ -55,6 +55,7 @@ public class Wish extends BaseTimeEntity {
 
     @OneToMany(mappedBy = "wish", fetch = FetchType.LAZY)
     @OrderBy("regDate DESC")
+    @Builder.Default
     private List<Claim> claims = new ArrayList<>();
 
     public void close() {

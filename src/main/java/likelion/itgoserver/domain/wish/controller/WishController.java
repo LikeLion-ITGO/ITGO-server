@@ -50,14 +50,24 @@ public class WishController {
         return ApiResponse.success(resp, "나눔 요청 등록 완료");
     }
 
-    @Operation(summary = "사용자가 올린 Wish 카드 리스트")
+    @Operation(summary = "사용자가 올린 모든 Wish 카드 리스트")
     @GetMapping()
     public ApiResponse<Page<WishCardResponse>> myShares(
             @CurrentMemberId Long memberId,
             @ParameterObject
             @PageableDefault(size = 20) Pageable pageable
     ) {
-        return ApiResponse.success(wishService.listMyWishCards(memberId, pageable), "사용자가 등록한 요청 조회 완료");
+        return ApiResponse.success(wishService.listMyWishCards(memberId, pageable), "사용자가 등록한 모든 요청 조회 완료");
+    }
+
+    @Operation(summary = "사용자가 올린 진행중인 Wish 카드 리스트")
+    @GetMapping("/active")
+    public ApiResponse<Page<WishCardResponse>> myActiveShares(
+            @CurrentMemberId Long memberId,
+            @ParameterObject
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ApiResponse.success(wishService.listMyActiveWishCards(memberId, pageable), "사용자가 등록한 진행중인 요청 조회 완료");
     }
 
 }

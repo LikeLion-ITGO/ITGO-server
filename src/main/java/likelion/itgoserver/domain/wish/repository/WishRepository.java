@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface WishRepository extends JpaRepository<Wish, Long> {
     Page<Wish> findByStoreId(Long storeId, Pageable pageable);
+
+    Page<Wish> findByStoreIdAndIsActiveTrue(Long storeId, Pageable pageable);
 }

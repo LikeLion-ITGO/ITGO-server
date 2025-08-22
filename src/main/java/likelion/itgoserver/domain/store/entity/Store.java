@@ -38,6 +38,14 @@ public class Store {
     @Column(name = "close_time", nullable = false)
     private LocalTime closeTime;
 
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer giveTimes = 0;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer receivedTimes = 0;
+
     @Column(length = 500)
     private String description; // 가게 소개
 
@@ -60,4 +68,7 @@ public class Store {
     public void updateImageKey(String imageKey) {
         this.storeImageKey = imageKey;
     }
+
+    public void increaseGiveTimes() { this.giveTimes += 1; }
+    public void increaseReceivedTimes() { this.receivedTimes += 1; }
 }

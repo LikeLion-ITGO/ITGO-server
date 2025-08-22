@@ -6,6 +6,7 @@ import likelion.itgoserver.domain.claim.repository.ClaimRepository;
 import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
+import likelion.itgoserver.domain.store.entity.Store;
 import likelion.itgoserver.domain.trade.dto.TradeDetailResponse;
 import likelion.itgoserver.domain.trade.entity.Trade;
 import likelion.itgoserver.domain.trade.entity.TradeStatus;
@@ -99,6 +100,13 @@ public class TradeService {
             t.complete();
             t.getWish().close();
         }
+
+        // 나눔 횟수 업데이트
+        Store giver = t.getGiverStore();
+        Store receiver = t.getReceiverStore();
+        giver.increaseGiveTimes();
+        receiver.increaseReceivedTimes();
+
         return get(tradeId);
     }
 

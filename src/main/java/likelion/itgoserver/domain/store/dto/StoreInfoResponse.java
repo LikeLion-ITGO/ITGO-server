@@ -24,7 +24,13 @@ public record StoreInfoResponse(
         @Schema(description = "가게 전화번호", example = "02-1234-5678")
         String phoneNumber,
         @Schema(description = "가게 소개", example = "철길 사거리 방면 CU 옆건물 2층입니다.")
-        String description
+        String description,
+
+        @Schema(description = "나눔을 준 횟수", example = "11")
+        Integer giveTimes,
+
+        @Schema(description = "나눔을 받은 횟수", example = "7")
+        Integer receivedTimes
 ) {
     public static StoreInfoResponse of(Store store, String imageUrl) {
         return new StoreInfoResponse(
@@ -35,7 +41,9 @@ public record StoreInfoResponse(
                 store.getOpenTime(),
                 store.getCloseTime(),
                 store.getPhoneNumber(),
-                store.getDescription()
+                store.getDescription(),
+                store.getGiveTimes(),
+                store.getReceivedTimes()
         );
     }
 }

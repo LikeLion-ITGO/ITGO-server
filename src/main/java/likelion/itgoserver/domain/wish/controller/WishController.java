@@ -43,10 +43,9 @@ public class WishController {
     public ApiResponse<WishCreateAndMatchResponse> createAndMatch(
             @CurrentMemberId Long memberId,
             @Valid @RequestBody WishUpsertRequest request,
-            @RequestParam(defaultValue = "3") double radiusKm,     // 선택: 근처 반경(없으면 동 기준만)
-            @RequestParam(defaultValue = "10") int size            // 한 번에 보여줄 개수
+            @RequestParam(defaultValue = "10") int size
     ) {
-        var resp = wishService.createAndMatch(memberId, request, radiusKm, PageRequest.of(0, size));
+        var resp = wishService.createAndMatch(memberId, request, PageRequest.of(0, size));
         return ApiResponse.success(resp, "나눔 요청 등록 완료");
     }
 

@@ -2,6 +2,7 @@ package likelion.itgoserver.domain.share.entity;
 
 import jakarta.persistence.*;
 import likelion.itgoserver.domain.claim.entity.Claim;
+import likelion.itgoserver.domain.share.dto.ShareUpsertRequest;
 import likelion.itgoserver.domain.store.entity.Store;
 import likelion.itgoserver.global.error.GlobalErrorCode;
 import likelion.itgoserver.global.error.exception.CustomException;
@@ -74,7 +75,15 @@ public class Share extends BaseTimeEntity {
         this.quantity += amount;
     }
 
-    public void certifyFresh() {
-        this.freshCertified = true;
+    public void update(ShareUpsertRequest req) {
+        this.itemName = req.itemName();
+        this.brand = req.brand();
+        this.quantity = req.quantity();
+        this.description = req.description();
+        this.expirationDate = req.expirationDate();
+        this.storageType = req.storageType();
+        this.freshCertified = (req.freshCertified() != null) ? req.freshCertified() : this.freshCertified;
+        this.openTime = req.openTime();
+        this.closeTime = req.closeTime();
     }
 }

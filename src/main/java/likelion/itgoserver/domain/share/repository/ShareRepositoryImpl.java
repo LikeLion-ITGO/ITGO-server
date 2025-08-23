@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -82,6 +83,79 @@ public class ShareRepositoryImpl implements ShareRepositoryCustom {
                 .toList();
 
         return new PageImpl<>(content, pageable, total);
+    }
+
+    @Override
+    public Page<ShareWithDistance> findActiveByDong(
+            String dong, Double oLat, Double oLng, Long originStoreId,
+            LocalDate today, Pageable pageable) {
+
+        var where = new BooleanBuilder()
+                .and(share.store.address.dong.eq(dong))
+                .and(share.quantity.gt(0))
+                .and(share.expirationDate.isNull().or(share.expirationDate.goe(today)))
+                .and(share.store.id.ne(originStoreId));
+
+        NumberExpression<Double> distMeters = (oLat != null && oLng != null)
+                ? Expressions.numberTemplate(
+                Double.class,
+                "ST_Distance_Sphere(point({0}, {1}), point({2}, {3}))",
+                share.store.address.longitude, share.store.address.latitude,
+                Expressions.constant(oLng), Expressions.constant(oLat)
+        )
+                : null;
+
+        // dist 정렬 가능하면 거리, 최신순, 아니면 최신순
+        var order = (distMeters != null)
+                ? new com.querydsl.core.types.OrderSpecifier[] {
+                distMeters.asc(), share.regDate.desc(), share.id.desc()
+        }
+                : new com.querydsl.core.types.OrderSpecifier[] {
+                share.regDate.desc(), share.id.desc()
+        };
+
+        // content
+        List<ShareWithDistance> content;
+        if (distMeters != null) {
+            var tuples = query
+                    .select(share, distMeters)
+                    .from(share)
+                    .join(share.store, store).fetchJoin()
+                    .where(where)
+                    .orderBy(order)
+                    .offset(pageable.getOffset())
+                    .limit(pageable.getPageSize())
+                    .fetch();
+
+            content = tuples.stream()
+                    .map(t -> new ShareWithDistance(
+                            t.get(share),
+                            t.get(distMeters) == null ? null : t.get(distMeters) / 1000.0
+                    ))
+                    .toList();
+        } else {
+            var rows = query
+                    .selectFrom(share)
+                    .join(share.store, store).fetchJoin()
+                    .where(where)
+                    .orderBy(order)
+                    .offset(pageable.getOffset())
+                    .limit(pageable.getPageSize())
+                    .fetch();
+
+            content = rows.stream().map(s -> new ShareWithDistance(s, null)).toList();
+        }
+
+        // count
+        var countQ = query.select(share.count())
+                .from(share)
+                .join(share.store, store)
+                .where(where);
+
+        return PageableExecutionUtils.getPage(content, pageable, () -> {
+            Long c = countQ.fetchOne();
+            return c == null ? 0L : c;
+        });
     }
 
     private BooleanExpression overlap(TimePath<LocalTime> aStart,

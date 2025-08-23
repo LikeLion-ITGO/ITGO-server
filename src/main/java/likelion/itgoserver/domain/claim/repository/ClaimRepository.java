@@ -2,7 +2,7 @@ package likelion.itgoserver.domain.claim.repository;
 
 import jakarta.persistence.LockModeType;
 import likelion.itgoserver.domain.claim.entity.Claim;
-import org.springframework.data.domain.Page;
+import likelion.itgoserver.domain.claim.entity.ClaimStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -30,6 +30,8 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id")
     Optional<Claim> findByIdForUpdate(@Param("id") Long id);
+
+    boolean existsByShareIdAndStatusIn(Long shareId, List<ClaimStatus> statusList);
 
     interface ShareClaimCount {
         Long getShareId();

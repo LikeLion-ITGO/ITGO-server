@@ -77,7 +77,7 @@ public class SecurityConfig {
         cors.setAllowedOriginPatterns(List.of(
                 "https://itgo.life",
                 "https://www.itgo.life",
-                "https://*.vercel.app",
+                "https://itgo-client.vercel.app",
                 "http://localhost:3000",
                 "http://localhost:5173",
                 "http://127.0.0.1:3000",

@@ -1,17 +1,28 @@
 package likelion.itgoserver.domain.store.service;
 
-import likelion.itgoserver.domain.member.entity.Member;
-import likelion.itgoserver.domain.member.repository.MemberRepository;
-import likelion.itgoserver.domain.store.dto.StoreImageDtos.StoreImageConfirmRequest;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import likelion.itgoserver.domain.store.dto.StoreImageDraftPresignRequest;
+import likelion.itgoserver.domain.store.dto.StoreImageDraftPresignResponse;
 import likelion.itgoserver.domain.store.entity.Store;
 import likelion.itgoserver.domain.store.repository.StoreRepository;
 import likelion.itgoserver.global.error.GlobalErrorCode;
 import likelion.itgoserver.global.error.exception.CustomException;
+import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
 import likelion.itgoserver.global.infra.s3.service.S3ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+
+import java.util.Set;
+
+import static java.util.Locale.*;
+import static java.util.Optional.ofNullable;
+import static org.springframework.transaction.support.TransactionSynchronizationManager.*;
 
 @Service
 @Slf4j
@@ -19,57 +30,79 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class StoreImageService {
 
-    private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
     private final S3ImageService s3ImageService;
+    private final PublicUrlResolver publicUrlResolver;
 
-    public void confirmStoreImage(Long memberId, StoreImageConfirmRequest req) {
-        validateStoreOwner(memberId, req.storeId());
+    private final AmazonS3 s3;
 
-        // S3 Key 검증
-        String key = req.objectKey();
-        if (key == null || key.isBlank()) {
-            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "objectKey가 비어 있습니다.");
-        }
-        assertKeyBelongsToStore(req.storeId(), key);
+    @Value("${cloud.aws.s3.bucket}")
+    private String bucket;
 
-        // 실제 업로드 검증
-        if (!s3ImageService.doesObjectExist(req.objectKey())) {
-            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "업로드되지 않은 객체입니다.");
-        }
+    @Value("${app.image.presign-ttl-minutes:15}")
+    private long presignTtlMinutes;
 
-        // S3 Key 업데이트
-        Store store = storeRepository.findById(req.storeId())
-                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "가게가 존재하지 않습니다."));
-        String oldKey = store.getStoreImageKey();
-        store.updateImageKey(req.objectKey());
-
-        // 이전 키 삭제
-        if (oldKey != null && !oldKey.equals(key)) {
-            try {
-                s3ImageService.deleteObject(oldKey);
-            } catch (Exception e) {
-                log.warn("Failed to delete old image: {}", oldKey, e);
-            }
-        }
-    }
+    private static final long MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    private static final Set<String> ALLOWED = Set.of("image/jpeg","image/png","image/webp","image/gif");
 
     @Transactional(readOnly = true)
-    public void validateStoreOwner(Long memberId, Long storeId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "회원이 존재하지 않습니다."));
-        Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "가게가 존재하지 않습니다."));
+    public StoreImageDraftPresignResponse presignDraft(Long memberId, StoreImageDraftPresignRequest req) {
+        if (req.sizeBytes() != null && req.sizeBytes() > MAX_IMAGE_BYTES)
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 최대 10MB 초과");
+        if (!ALLOWED.contains(req.contentType()))
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "허용되지 않는 이미지 타입");
 
-        if (store.getOwner() == null || !store.getOwner().getId().equals(member.getId())) {
-            throw new CustomException(GlobalErrorCode.INVALID_PERMISSION, "본인 가게가 아닙니다.");
-        }
+        var ttl = java.time.Duration.ofMinutes(presignTtlMinutes);
+        String draftKey = s3ImageService.storeDraftKey(memberId, req.ext());
+        String putUrl   = s3ImageService.createPresignedPutUrl(draftKey, req.contentType(), ttl).toString();
+        String previewUrl = publicUrlResolver.toUrl(draftKey);
+        return new StoreImageDraftPresignResponse(memberId, putUrl, previewUrl, draftKey);
     }
 
-    private void assertKeyBelongsToStore(Long storeId, String key) {
-        String expectedPrefix = "stores/%d/cover/".formatted(storeId);
-        if (!key.startsWith(expectedPrefix)) {
-            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "해당 가게의 키가 아닙니다.");
-        }
+    @Transactional
+    public void commitFromDraft(Long memberId, Long storeId, String draftKey) {
+        Store store = storeRepository.findByIdForUpdate(storeId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "store가 존재하지 않습니다. id=" + storeId));
+        if (!store.getOwner().getId().equals(memberId))
+            throw new CustomException(GlobalErrorCode.INVALID_PERMISSION, "가게의 소유자가 아닙니다.");
+
+        String expectedPrefix = "drafts/" + memberId + "/store/image/";
+        if (!draftKey.startsWith(expectedPrefix))
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "다른 사용자의 draftKey입니다.");
+
+        var md = s3.getObjectMetadata(new GetObjectMetadataRequest(bucket, draftKey));
+        validate(md, draftKey);
+
+        String ext = S3ImageService.extractExtFromKey(draftKey);
+        String finalKey = s3ImageService.storeImageKey(storeId, ext);
+        s3ImageService.copyObject(draftKey, finalKey);
+
+        String oldKey = store.getStoreImageKey();
+        store.updateImageKey(finalKey);
+        storeRepository.saveAndFlush(store);
+
+        registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status == STATUS_COMMITTED) { safeDelete(draftKey); safeDelete(oldKey); }
+                        else { safeDelete(finalKey); }
+                    }
+                }
+        );
+    }
+
+    private void validate(ObjectMetadata md, String key) {
+        long size = md.getContentLength();
+        if (size <= 0 || size > MAX_IMAGE_BYTES)
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 용량 오류: " + key);
+        String ctRaw = ofNullable(md.getContentType()).orElse("").toLowerCase(ROOT);
+        String ct = ctRaw.split(";", 2)[0].trim();
+        if (!ALLOWED.contains(ct))
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "허용되지 않는 MIME: " + ctRaw);
+    }
+
+    private void safeDelete(String key) {
+        try { if (key != null && !key.isBlank()) s3ImageService.deleteObject(key); }
+        catch (Exception e) { log.warn("S3 삭제 실패 key={}", key, e); }
     }
 }

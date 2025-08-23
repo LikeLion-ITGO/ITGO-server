@@ -1,9 +1,9 @@
 package likelion.itgoserver.domain.wish.service;
 
 import likelion.itgoserver.domain.claim.repository.ClaimRepository;
+import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.share.dto.ShareWithDistance;
 import likelion.itgoserver.domain.share.entity.Share;
-import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
 import likelion.itgoserver.domain.store.repository.StoreRepository;
 import likelion.itgoserver.domain.wish.dto.WishCardResponse;
@@ -27,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -40,11 +39,12 @@ public class WishService {
     private final WishRepository wishRepository;
     private final StoreRepository storeRepository;
     private final ShareRepository shareRepository;
+    private final ShareImageRepository shareImageRepository;
     private final ClaimRepository claimRepository;
     private final PublicUrlResolver publicUrlResolver;
 
     @Transactional
-    public WishCreateAndMatchResponse createAndMatch(Long memberId, WishUpsertRequest req, double radiusKm, Pageable pageable) {
+    public WishCreateAndMatchResponse createAndMatch(Long memberId, WishUpsertRequest req, Pageable pageable) {
         // 1. 기본 검증
         if (!req.openTime().isBefore(req.closeTime())) {
             throw new CustomException(GlobalErrorCode.BAD_REQUEST, "openTime은 closeTime보다 앞서야 합니다.");
@@ -70,8 +70,23 @@ public class WishService {
         // 4) 매칭 쿼리
         var page = shareRepository.findMatchesForWish(wish.getId(), pageable);
 
+        List<Long> shareIds = page.getContent().stream()
+                .map(swd -> swd.share().getId())
+                .toList();
+
+        Map<Long, String> primaryUrlByShareId = shareImageRepository
+                .findByShareIdInAndSeq(shareIds, 0)
+                .stream()
+                .collect(Collectors.toMap(
+                        si -> si.getShare().getId(),
+                        si -> publicUrlResolver.toUrl(si.getObjectKey()),
+                        (a, b) -> a
+                ));
+
         // 5) DTO 매핑
-        var items = page.stream().map(this::toMatchItem).toList();
+        var items = page.stream()
+                .map(swd -> toMatchItem(swd, primaryUrlByShareId.get(swd.share().getId())))
+                .toList();
 
         return new WishCreateAndMatchResponse(wish.getId(), items);
     }
@@ -141,14 +156,8 @@ public class WishService {
         ));
     }
 
-    private WishMatchItem toMatchItem(ShareWithDistance swd) {
+    private WishMatchItem toMatchItem(ShareWithDistance swd, String primaryUrl) {
         Share share = swd.share();
-
-        String primaryUrl = share.getImages().stream()
-                .sorted(Comparator.comparingInt(ShareImage::getSeq))
-                .findFirst()
-                .map(img -> publicUrlResolver.toUrl(img.getObjectKey()))
-                .orElse(null);
 
         Long minutesAgo = (share.getRegDate() == null) ? null :
                 ChronoUnit.MINUTES.between(share.getRegDate(), LocalDateTime.now());

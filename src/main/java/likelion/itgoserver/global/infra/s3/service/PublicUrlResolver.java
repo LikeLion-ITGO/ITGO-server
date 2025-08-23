@@ -36,7 +36,7 @@ public class PublicUrlResolver {
      * 내부 메서드
      */
     private static boolean isAbsoluteUrl(String s) {
-        String t = s.toLowerCase();
+        String t = s.toLowerCase(java.util.Locale.ROOT);
         return t.startsWith("http://") || t.startsWith("https://");
     }
 

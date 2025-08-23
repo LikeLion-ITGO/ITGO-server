@@ -40,13 +40,10 @@ public class ShareService {
     private final ShareRepository shareRepository;
     private final StoreRepository storeRepository;
     private final PublicUrlResolver publicUrlResolver;
+    private final ShareImageService shareImageService;
     private final ShareImageRepository shareImageRepository;
     private final ClaimRepository claimRepository;
 
-    /**
-     * Share 등록 - 이미지는 비어있는 상태로 생성하고,
-     * 이후에 /share-images/confirm 경로를 통해 이미지 확정.
-     */
     @Transactional
     public ShareResponse create(Long memberId, ShareUpsertRequest req) {
         validateBusinessRules(req);
@@ -71,7 +68,11 @@ public class ShareService {
 
         // Share 저장
         Share saved = shareRepository.save(share);
-        log.info("Share 생성 완료: id={}, storeId={}, itemName={}", saved.getId(), store.getId(), saved.getItemName());
+
+        // 이미지가 있으면 draft -> final 커밋
+        if (req.images() != null && !req.images().isEmpty()) {
+            shareImageService.commitFromDraft(memberId, saved, req.images());
+        }
 
         // 응답 변환 (이미지 비어있거나, 추후 confirm 후 재조회 시 포함)
         return toResponse(saved);

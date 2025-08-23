@@ -10,6 +10,9 @@ public record StoreUpdateRequest(
         @Schema(description = "가게 이름", example = "여기꼬치네")
         String storeName,
 
+        @Schema(description = "이미지 임시 S3 Key", example = "")
+        String imageDraftKey,
+
         AddressRequest address,
 
         @Schema(description = "영업 시작 시간", example = "09:00")
@@ -26,4 +29,7 @@ public record StoreUpdateRequest(
         @Schema(description = "가게 소개", example = "철길 사거리 방면 CU 옆건물 2층입니다.")
         String description
 ) implements StoreRequest {
+        public boolean hasNewImage() {
+                return imageDraftKey != null && !imageDraftKey.isBlank();
+        }
 }

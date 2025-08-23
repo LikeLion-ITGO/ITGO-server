@@ -1,20 +1,21 @@
 package likelion.itgoserver.domain.share.service;
 
+import likelion.itgoserver.domain.claim.entity.ClaimStatus;
 import likelion.itgoserver.domain.claim.repository.ClaimRepository;
 import likelion.itgoserver.domain.image.dto.*;
 import likelion.itgoserver.domain.image.repository.ShareImageRepository;
 import likelion.itgoserver.domain.image.service.ShareImageService;
-import likelion.itgoserver.domain.share.dto.ShareCardResponse;
-import likelion.itgoserver.domain.share.dto.ShareResponse;
-import likelion.itgoserver.domain.share.dto.ShareUpsertRequest;
+import likelion.itgoserver.domain.share.dto.*;
 import likelion.itgoserver.domain.share.entity.Share;
 import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
+import likelion.itgoserver.domain.store.entity.Address;
 import likelion.itgoserver.domain.store.entity.Store;
 import likelion.itgoserver.domain.store.repository.StoreRepository;
 import likelion.itgoserver.global.error.GlobalErrorCode;
 import likelion.itgoserver.global.error.exception.CustomException;
 import likelion.itgoserver.global.infra.s3.service.PublicUrlResolver;
+import likelion.itgoserver.global.infra.s3.service.S3ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -23,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
 
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -31,6 +33,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.springframework.data.domain.Sort.Order.desc;
+import static org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization;
 
 @Slf4j
 @Service
@@ -41,6 +44,7 @@ public class ShareService {
     private final StoreRepository storeRepository;
     private final PublicUrlResolver publicUrlResolver;
     private final ShareImageService shareImageService;
+    private final S3ImageService s3ImageService;
     private final ShareImageRepository shareImageRepository;
     private final ClaimRepository claimRepository;
 
@@ -61,7 +65,7 @@ public class ShareService {
                 .description(req.description())
                 .expirationDate(req.expirationDate())
                 .storageType(req.storageType())
-                .freshCertified(req.freshCertified())
+                .freshCertified(Boolean.TRUE.equals(req.freshCertified()))
                 .openTime(req.openTime())
                 .closeTime(req.closeTime())
                 .build();
@@ -134,6 +138,123 @@ public class ShareService {
                 primaryUrlByShareId.getOrDefault(s.getId(), null),
                 countByShareId.getOrDefault(s.getId(), 0)
         ));
+    }
+
+    /**
+     * 같은 동네 한정 Share 리스트 조회
+     */
+    @Transactional(readOnly = true)
+    public Page<ShareByDongResponse> getByDong(Long memberId, Pageable pageable) {
+        Store myStore = storeRepository.findByOwnerId(memberId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "회원의 가게가 없습니다."));
+
+        Address addr = myStore.getAddress();
+
+        var page = shareRepository.findActiveByDong(
+                addr.getDong(),
+                addr.getLatitude(), addr.getLongitude(),
+                myStore.getId(),
+                LocalDate.now(),
+                pageable
+        );
+        if (page.isEmpty()) return Page.empty(pageable);
+
+        // 이번 페이지의 shareIds
+        var shareIds = page.getContent().stream()
+                .map(swd -> swd.share().getId())
+                .toList();
+
+        // 대표이미지(seq=0) 배치 조회 → URL 맵
+        var primaryUrlByShareId = shareImageRepository.findByShareIdInAndSeq(shareIds, 0).stream()
+                .collect(Collectors.toMap(
+                        si -> si.getShare().getId(),
+                        si -> publicUrlResolver.toUrl(si.getObjectKey()),
+                        (a, b) -> a
+                ));
+
+        return page.map(swd -> {
+            var s = swd.share();
+            var url = primaryUrlByShareId.get(s.getId());
+            Double km = swd.distanceKm() == null ? null :
+                    Math.round(swd.distanceKm() * 10.0) / 10.0;
+
+            return new ShareByDongResponse(
+                    s.getId(),
+                    s.getItemName(),
+                    s.getBrand(),
+                    s.getQuantity(),
+                    s.getExpirationDate(),
+                    s.getStorageType(),
+                    s.getOpenTime(),
+                    s.getCloseTime(),
+                    url,
+                    km
+            );
+        });
+    }
+
+    @Transactional
+    public ShareResponse update(Long memberId, Long shareId, ShareUpsertRequest req) {
+        validateBusinessRules(req);
+
+        // 소유자/엔티티 검증 + 잠금
+        Share share = shareRepository.findByIdForUpdate(shareId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + shareId));
+        Long ownerId = share.getStore().getOwner().getId();
+        if (!ownerId.equals(memberId)) {
+            throw new CustomException(GlobalErrorCode.INVALID_PERMISSION, "본인 가게의 게시글만 수정할 수 있습니다.");
+        }
+
+        // 업데이트 반영 (이미지 제외)
+        share.update(req);
+
+        // 이미지 처리 규칙:
+        //  - null: 그대로 둔다
+        //  - []  : 모두 삭제
+        //  - [..]: 드래프트에서 교체
+        if (req.images() != null) {
+            shareImageService.commitFromDraft(memberId, share, req.images());
+        }
+
+        return toResponse(share);
+    }
+
+    /** 삭제 */
+    @Transactional
+    public void delete(Long memberId, Long shareId) {
+        Share share = shareRepository.findByIdForUpdate(shareId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + shareId));
+
+        Long ownerId = share.getStore().getOwner().getId();
+        if (!ownerId.equals(memberId)) {
+            throw new CustomException(GlobalErrorCode.INVALID_PERMISSION, "본인 가게의 게시글만 삭제할 수 있습니다.");
+        }
+
+        // 진행 중인 신청이 있으면 삭제 불가
+        boolean hasActiveClaims = claimRepository.existsByShareIdAndStatusIn(
+                shareId,
+                java.util.List.of(ClaimStatus.PENDING, ClaimStatus.ACCEPTED)
+        );
+        if (hasActiveClaims) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "신청 진행 중인 게시글은 삭제할 수 없습니다.");
+        }
+
+        // 이미지 키 미리 백업 (DB 삭제 후 S3 삭제)
+        var keysToDelete = share.getImages().stream()
+                .map(ShareImage::getObjectKey)
+                .filter(k -> k != null && !k.isBlank())
+                .toList();
+
+        shareRepository.delete(share);
+
+        registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                for (String key : keysToDelete) {
+                    try { s3ImageService.deleteObject(key); }
+                    catch (Exception e) { log.warn("Share 삭제 후 S3 이미지 삭제 실패 key={}", key, e); }
+                }
+            }
+        });
     }
 
     /**

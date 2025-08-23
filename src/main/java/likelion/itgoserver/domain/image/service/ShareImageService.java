@@ -4,8 +4,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import likelion.itgoserver.domain.image.dto.*;
-import likelion.itgoserver.domain.image.dto.ShareImageConfirmRequest.ConfirmItem;
-import likelion.itgoserver.domain.image.repository.ShareImageRepository;
+import likelion.itgoserver.domain.share.dto.ShareUpsertRequest.ImageDraftItem;
 import likelion.itgoserver.domain.share.entity.Share;
 import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
@@ -19,11 +18,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
+
+import static org.springframework.transaction.support.TransactionSynchronizationManager.*;
 
 @Slf4j
 @Service
@@ -31,9 +30,8 @@ import java.util.stream.Collectors;
 public class ShareImageService {
 
     private final ShareRepository shareRepository;
-    private final ShareImageRepository shareImageRepository;
-    private final PublicUrlResolver publicUrlResolver;
     private final S3ImageService s3ImageService;
+    private final PublicUrlResolver publicUrlResolver;
 
     private final AmazonS3 s3;
 
@@ -53,121 +51,98 @@ public class ShareImageService {
     );
 
     @Transactional(readOnly = true)
-    public ShareImagePresignResponse presign(Long shareId, ShareImagePresignRequest request) {
-        if (!shareRepository.existsById(shareId)) {
-            throw new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + shareId);
-        }
-
+    public ShareImageDraftPresignResponse presignDraft(Long memberId, ShareImageDraftPresignRequest request) {
         if (request.items() == null || request.items().isEmpty())
             throw new CustomException(GlobalErrorCode.BAD_REQUEST, "요청 이미지가 없습니다.");
         if (request.items().size() > MAX_IMAGES)
-            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지는 최대 " + MAX_IMAGES + "장까지");
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지는 최대 5장까지");
 
         for (var it : request.items()) {
             if (it.sizeBytes() != null && it.sizeBytes() > MAX_IMAGE_BYTES) {
-                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 최대 크기(10MB)를 초과했습니다. seq=" + it.seq());
+                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 최대 크기(10MB) 초과: seq=" + it.seq());
             }
             if (!ALLOWED_IMAGE_MIME.contains(it.contentType())) {
-                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "허용되지 않는 이미지 타입입니다. seq=" + it.seq());
+                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "허용되지 않는 타입: seq=" + it.seq());
             }
         }
 
         var ttl = java.time.Duration.ofMinutes(presignTtlMinutes);
         var items = request.items().stream()
                 .map(it -> {
-                    // shares/{shareId}/images/{seq}_{uuid}.{ext}
-                    String key = s3ImageService.shareKey(shareId, it.seq(), it.ext());
-
-                    // 프런트의 PUT에도 동일한 Content-Type 헤더
-                    String putUrl = s3ImageService.createPresignedPutUrl(key, it.contentType(), ttl).toString();
-
-                    // 업로드 직후 미리보기용
-                    String publicUrl = publicUrlResolver.toUrl(key);
-
-                    return new ShareImagePresignResponse.PresignItemResponse(it.seq(), putUrl, key, publicUrl);
+                    String draftKey = s3ImageService.draftKey(memberId, it.seq(), it.ext());
+                    String putUrl   = s3ImageService.createPresignedPutUrl(draftKey, it.contentType(), ttl).toString();
+                    String previewUrl = publicUrlResolver.toUrl(draftKey);
+                    return new ShareImageDraftPresignResponse.Item(it.seq(), putUrl, previewUrl, draftKey);
                 })
                 .toList();
-        return new ShareImagePresignResponse(shareId, items);
+
+        return new ShareImageDraftPresignResponse(memberId, items);
     }
 
     @Transactional
-    public ShareImageListResponse confirm(ShareImageConfirmRequest req) {
-        final Long shareId = req.shareId();
+    public void commitFromDraft(Long memberId, Share share, List<ImageDraftItem> images) {
+        if (images == null) return;
+        if (images.size() > MAX_IMAGES)
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지는 최대 5장까지");
 
-        if (req.items() == null) throw new CustomException(GlobalErrorCode.BAD_REQUEST, "요청 이미지가 없습니다.");
-        if (req.items().size() > MAX_IMAGES)
-            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지는 최대 " + MAX_IMAGES + "장까지");
+        // 1. 유효성 & 목적지 키 계산 & 즉시 복사 수행
+        String draftPrefix = "drafts/" + memberId + "/images/";
+        var seenSeq   = new java.util.HashSet<Integer>();
+        var destImgs  = new java.util.ArrayList<ShareImage>(images.size());
+        var destKeys  = new java.util.ArrayList<String>(images.size()); // 롤백 시 삭제용
+        for (var it : images) {
+            if (it == null || it.seq() == null || it.draftKey() == null)
+                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 항목이 올바르지 않습니다.");
+            int seq = it.seq();
+            if (seq < 0 || seq > 4 || !seenSeq.add(seq))
+                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "seq는 0~4 범위 내 중복 없이 지정");
 
-        // Share 잠금
-        Share share = shareRepository.findByIdForUpdate(shareId)
-                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + shareId));
-
-        // 기존 키 백업
-        List<String> oldKeys = share.getImages().stream()
-                .map(ShareImage::getObjectKey)
-                .toList();
-
-        // 입력 검증 + 새 엔티티 준비
-        String expectedPrefix = "shares/" + shareId + "/images/";
-        var seenSeq = new java.util.HashSet<Integer>();
-        var nextImages = new java.util.ArrayList<ShareImage>(req.items().size());
-
-        for (ConfirmItem item : req.items()) {
-            // seq 중복 방지
-            if (!seenSeq.add(item.seq())) {
-                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미지 seq가 중복되었습니다. seq=" + item.seq());
+            String draftKey = it.draftKey();
+            if (!draftKey.startsWith(draftPrefix)) {
+                throw new CustomException(GlobalErrorCode.BAD_REQUEST, "다른 사용자의 draftKey 접근은 불가");
             }
 
-            String objectKey = item.objectKey();
+            // HEAD 검증
+            ObjectMetadata md = headObject(draftKey);
+            validateMetadata(md, draftKey);
 
-            // 키 prefix 검증
-            if (!objectKey.startsWith(expectedPrefix)) {
-                throw new CustomException(GlobalErrorCode.BAD_REQUEST,
-                        "objectKey가 허용된 경로가 아닙니다. requiredPrefix=" + expectedPrefix);
-            }
+            // 목적지 키 계산 & 즉시 복사
+            String ext = S3ImageService.extractExtFromKey(draftKey);
+            String finalKey = s3ImageService.shareKey(share.getId(), seq, ext);
+            s3ImageService.copyObject(draftKey, finalKey);
+            destKeys.add(finalKey);
 
-            // S3 HEAD 검증 (존재 + 용량 + MIME)
-            ObjectMetadata md = headObject(objectKey);
-            validateMetadata(md, objectKey);
-
-            // 새 엔티티 생성 + 연관관계 매핑
-            ShareImage created = ShareImage.builder()
-                    .seq(item.seq())
-                    .objectKey(objectKey)
-                    .build();
-            nextImages.add(created);
+            // 엔티티 준비
+            destImgs.add(ShareImage.builder()
+                    .share(share)
+                    .seq(seq)
+                    .objectKey(finalKey)
+                    .build());
         }
 
-        // 기존 이미지 제거 + DELETE 반영
+        // 2. 기존 키 백업 후 교체
+        List<String> oldKeys = share.getImages().stream().map(ShareImage::getObjectKey).toList();
         share.getImages().clear();
-        shareRepository.flush();
-
-        // 새 이미지 추가
-        nextImages.forEach(share::addImage);
-
-        // 저장
+        destImgs.forEach(share::addImage);
         shareRepository.saveAndFlush(share);
 
-        // S3 고아 객체 정리
-        var keepKeys = nextImages.stream().map(ShareImage::getObjectKey).collect(java.util.stream.Collectors.toSet());
-        var toDelete = oldKeys.stream()
-                .filter(k -> !keepKeys.contains(k))
-                .filter(k -> k.startsWith(expectedPrefix))
-                .toList();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() {
-                for (String key : toDelete) {
-                    try {
-                        if (key != null && !key.isBlank()) s3ImageService.deleteObject(key);
-                    }
-                    catch (Exception e) {
-                        log.warn("Orphan image delete failed. shareId={}, key={}", shareId, key, e);
-                    }
-                }
-            }
-        });
+        // 3. 트랜잭션 : 커밋 시 draft 삭제 / 롤백 시 방금 복사한 dest 제거
+        var toDeleteDrafts = images.stream().map(ImageDraftItem::draftKey).toList();
+        var keepKeys = destImgs.stream().map(ShareImage::getObjectKey).collect(java.util.stream.Collectors.toSet());
+        var toDeleteOld = oldKeys.stream().filter(k -> !keepKeys.contains(k)).toList();
 
-        return buildResponse(shareId);
+        registerSynchronization(new TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status == STATUS_COMMITTED) {
+                            // 커밋 성공: draft 제거 + 옛 final 제거
+                            safeDeleteAll(toDeleteDrafts);
+                            safeDeleteAll(toDeleteOld);
+                        } else {
+                            // 롤백: 방금 복사한 목적지 제거
+                            safeDeleteAll(destKeys);
+                        }
+                    }
+                });
     }
 
     /**
@@ -202,16 +177,12 @@ public class ShareImageService {
         }
     }
 
-    private ShareImageListResponse buildResponse(Long shareId) {
-        List<ShareImage> list = shareImageRepository.findByShareIdOrderBySeqAsc(shareId);
-        List<ShareImageResponse> images = list.stream()
-                .map(img -> new ShareImageResponse(
-                        img.getSeq(),
-                        img.getObjectKey(),
-                        publicUrlResolver.toUrl(img.getObjectKey())
-                ))
-                .collect(Collectors.toList());
-        return new ShareImageListResponse(shareId, images);
+    private void safeDeleteAll(java.util.Collection<String> keys) {
+        if (keys == null) return;
+        for (String k : keys) {
+            try { if (k != null && !k.isBlank()) s3ImageService.deleteObject(k); }
+            catch (Exception e) { log.warn("S3 삭제 실패 key={}", k, e); }
+        }
     }
 
 }

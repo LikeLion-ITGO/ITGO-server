@@ -9,6 +9,7 @@ import likelion.itgoserver.domain.share.entity.StorageType;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 @Schema(description = "공유 글(Share) 생성/수정 요청")
 public record ShareUpsertRequest(
@@ -37,5 +38,13 @@ public record ShareUpsertRequest(
         @NotNull LocalTime openTime,
 
         @Schema(description = "마감 시각", example = "18:00")
-        @NotNull LocalTime closeTime
-) {}
+        @NotNull LocalTime closeTime,
+
+        @Schema(description = "이미지 S3 Key", example = "")
+        List<ImageDraftItem> images
+) {
+        public record ImageDraftItem(
+                Integer seq,
+                String draftKey
+        ) {}
+}

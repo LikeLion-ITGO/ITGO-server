@@ -15,7 +15,16 @@ spring:
         format_sql: false
     open-in-view: false
 
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
+
   data:
     redis:
       host: redis
       port: 6379
+
+itgo:
+  ai:
+    base-url: http://itgo-ai:8000

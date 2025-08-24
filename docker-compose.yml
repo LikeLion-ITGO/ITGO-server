@@ -1,8 +1,8 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
+    ports:
+      - "3306:3306"
     container_name: itgo-mysql
     env_file:
       - .env
@@ -19,9 +19,24 @@ services:
 
   redis:
     image: redis:7
+    ports:
+      - "6379:6379"
     container_name: itgo-redis
     volumes:
       - redis_data:/data
+    networks:
+      - my-network
+
+  ai:
+    container_name: itgo-ai
+    image: jostar1013/itgo-ai:latest
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+    environment:
+      PYTHONBUFFERED: "1"
+    restart: unless-stopped
     networks:
       - my-network
 
@@ -34,6 +49,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_started
+      ai:
         condition: service_started
     expose:
       - "8080"
@@ -53,6 +70,7 @@ services:
       - ./certbot/conf:/etc/letsencrypt:ro
     depends_on:
       - application
+      - ai
     networks:
       - my-network
 

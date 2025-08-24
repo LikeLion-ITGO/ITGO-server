@@ -188,7 +188,8 @@ public class ShareService {
                     s.getOpenTime(),
                     s.getCloseTime(),
                     url,
-                    km
+                    km,
+                    s.getRegDate()
             );
         });
     }

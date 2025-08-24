@@ -1,6 +1,7 @@
 package likelion.itgoserver.domain.claim.service;
 
 import likelion.itgoserver.domain.claim.dto.ClaimResponse;
+import likelion.itgoserver.domain.claim.dto.QuickClaimRequest;
 import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem;
 import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem.StoreSummary;
 import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem.WishSummary;
@@ -12,6 +13,8 @@ import likelion.itgoserver.domain.claim.entity.Claim;
 import likelion.itgoserver.domain.share.entity.ShareImage;
 import likelion.itgoserver.domain.share.repository.ShareRepository;
 import likelion.itgoserver.domain.claim.repository.ClaimRepository;
+import likelion.itgoserver.domain.store.entity.Store;
+import likelion.itgoserver.domain.store.repository.StoreRepository;
 import likelion.itgoserver.domain.trade.repository.TradeRepository;
 import likelion.itgoserver.domain.trade.service.TradeService;
 import likelion.itgoserver.domain.wish.entity.Wish;
@@ -39,6 +42,7 @@ import static likelion.itgoserver.domain.trade.repository.TradeRepository.*;
 public class ClaimService {
 
     private final ShareRepository shareRepository;
+    private final StoreRepository storeRepository;
     private final ShareImageRepository shareImageRepository;
     private final ClaimRepository claimRepository;
     private final WishRepository wishRepository;
@@ -71,6 +75,55 @@ public class ClaimService {
         log.info("Claim 생성: id={}, wish={}, share={}, qty={}", claim.getId(), wishId, shareId, wish.getQuantity());
         return ClaimResponse.from(claim);
     }
+
+    @Transactional
+    public ClaimResponse requestQuick(Long memberId, QuickClaimRequest req) {
+        if (req.shareId() == null) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "shareId는 필수입니다.");
+        }
+        if (req.quantity() == null || req.quantity() <= 0) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "요청 수량은 1 이상이어야 합니다.");
+        }
+        if (req.openTime() == null || req.closeTime() == null || !req.openTime().isBefore(req.closeTime())) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "openTime은 closeTime보다 앞서야 합니다.");
+        }
+
+        // 내 가게 & 대상 Share
+        Store store = storeRepository.findByOwnerId(memberId)
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "가게가 없습니다."));
+        Share share = shareRepository.findById(req.shareId())
+                .orElseThrow(() -> new CustomException(GlobalErrorCode.NOT_FOUND, "share가 존재하지 않습니다. id=" + req.shareId()));
+
+        // 이미 진행 중인지(중복 신청) 방지
+        boolean dup = claimRepository.existsActiveForStoreAndShare(
+                store.getId(), share.getId(),
+                java.util.List.of(ClaimStatus.PENDING, ClaimStatus.ACCEPTED)
+        );
+        if (dup) {
+            throw new CustomException(GlobalErrorCode.BAD_REQUEST, "이미 해당 나눔글에 신청이 진행 중입니다.");
+        }
+
+        // 가벼운 Wish 즉석 생성 (기존 Claim 파이프라인 재사용)
+        String quickTitle = (req.title() == null || req.title().isBlank())
+                ? "빠른 신청 - " + share.getItemName()
+                : req.title();
+
+        Wish wish = Wish.builder()
+                .store(store)
+                .title(quickTitle)
+                .itemName(share.getItemName())
+                .brand(share.getBrand())
+                .quantity(req.quantity())
+                .description(req.description())
+                .openTime(req.openTime())
+                .closeTime(req.closeTime())
+                .build();
+        wish = wishRepository.save(wish);
+
+        // 기존 로직 그대로 사용
+        return request(wish.getId(), share.getId());
+    }
+
 
     /**
      * 요청 수락

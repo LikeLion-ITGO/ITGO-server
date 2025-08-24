@@ -3,12 +3,10 @@ package likelion.itgoserver.domain.claim.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import likelion.itgoserver.domain.claim.dto.ClaimCreateRequest;
-import likelion.itgoserver.domain.claim.dto.ClaimResponse;
-import likelion.itgoserver.domain.claim.dto.ReceivedClaimItem;
-import likelion.itgoserver.domain.claim.dto.SentClaimItem;
+import likelion.itgoserver.domain.claim.dto.*;
 import likelion.itgoserver.domain.claim.service.ClaimService;
 import likelion.itgoserver.global.response.ApiResponse;
+import likelion.itgoserver.global.support.resolver.CurrentMemberId;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
@@ -33,6 +31,15 @@ public class ClaimController {
     public ApiResponse<ClaimResponse> create(@Valid @RequestBody ClaimCreateRequest request) {
         var resp = claimService.request(request.wishId(), request.shareId());
         return ApiResponse.success(resp);
+    }
+
+    @Operation(summary = "빠른 신청(동네 재고에서 바로 신청)")
+    @PostMapping("/quick")
+    public ApiResponse<ClaimResponse> quick(
+            @CurrentMemberId Long memberId,
+            @Valid @RequestBody QuickClaimRequest request
+    ) {
+        return ApiResponse.success(claimService.requestQuick(memberId, request));
     }
 
     @Operation(summary = "거래 신청 취소")

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,4 +59,14 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
            group by c.wish.id
            """)
     List<WishClaimCount> countByWishIdInGroup(@Param("wishIds") List<Long> wishIds);
+
+    @Query("""
+        select (count(c) > 0) from Claim c
+        where c.share.id = :shareId
+          and c.wish.store.id = :storeId
+          and c.status in :statuses
+    """)
+    boolean existsActiveForStoreAndShare(@Param("storeId") Long storeId,
+                                         @Param("shareId") Long shareId,
+                                         @Param("statuses") Collection<ClaimStatus> statuses);
 }

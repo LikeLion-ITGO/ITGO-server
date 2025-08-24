@@ -3,6 +3,7 @@ package likelion.itgoserver.domain.share.dto;
 import likelion.itgoserver.domain.share.entity.StorageType;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 public record ShareByDongResponse(
@@ -15,6 +16,7 @@ public record ShareByDongResponse(
         LocalTime openTime,
         LocalTime closeTime,
         String primaryImageUrl,
-        Double distanceKm
+        Double distanceKm,
+        LocalDateTime regDate
 ) {
 }

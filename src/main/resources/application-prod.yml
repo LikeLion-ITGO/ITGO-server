@@ -25,6 +25,6 @@ spring:
       host: redis
       port: 6379
 
-itgo:
-  ai:
-    base-url: http://itgo-ai:8000
+
+ai:
+  base-url: http://itgo-ai:8000
